@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <raylib.h>
@@ -44,6 +45,8 @@ struct enemy_t
 
 struct simulation_t
 {
+    level_unit_t level[LEVEL_WIDTH][LEVEL_HEIGHT];
+
     std::vector<Vector3> path;
     std::vector<enemy_t> enemies;
 };
@@ -79,18 +82,23 @@ void update_enemy(simulation_t& simulation, float delta, enemy_t& enemy)
     Vector3 approaching = simulation.path[enemy.path_index];
     auto diff = sub(approaching, enemy.position);
 
-    printf("%.3f %.3f %.3f\n", csv(diff));
-
+    // printf("%.3f %.3f %.3f\n", csv(diff));
     float diff_length = length(diff);
-    if (diff_length < 0.01f)
+    if (diff_length < 0.05f)
     {
         enemy.position = approaching;
+        enemy.path_index++;
+
+        if (enemy.path_index >= simulation.path.size())
+        {
+            printf("im done with this shit.\n");
+            enemy.path_index = simulation.path.size() - 1;
+        }
+
         return;
     }
 
     auto direction = div(diff, diff_length);
-    printf("direction.length: %f\n", length(direction));
-
     auto walking_distance = mul(direction, enemy.speed);
     auto walking_distance_delta = mul(walking_distance, delta);
 
@@ -98,15 +106,14 @@ void update_enemy(simulation_t& simulation, float delta, enemy_t& enemy)
     if (wdd_length > diff_length)
     {
         enemy.position = approaching;
-
         enemy.path_index++;
         if (enemy.path_index >= simulation.path.size())
         {
             printf("im done with this shit.\n");
             enemy.path_index = simulation.path.size() - 1;
-        }
 
-        // float remainder = wdd_length - diff_length;
+            return;
+        }
     }
     else
     {
@@ -146,6 +153,18 @@ buffer_t read_entire_file(const char* file_name)
     return {(char*)buffer, (uint32_t)buffer_size};
 }
 
+void write_entire_file(const char* file_name, buffer_t buffer)
+{
+    FILE* f = fopen(file_name, "wb");
+    if (!f)
+    {
+        printf("could not open file: %s\n", file_name);
+        exit(0);
+    }
+
+    fwrite(buffer.buffer, buffer.length, 1, f);
+}
+
 void update_path(simulation_t& simulation)
 {
 
@@ -157,8 +176,19 @@ int main()
     auto level_file = read_entire_file("level_0.csv");
     printf("read file:\n%.*s\n", level_file.length, level_file.buffer);
 
-    level_unit_t level[LEVEL_WIDTH][LEVEL_HEIGHT];
-    memset(level, 0, sizeof(level));
+    simulation_t simulation;
+    enemy_t enemy;
+    enemy.path_index = 0;
+    enemy.speed = 3;
+    enemy.position = {8, 0, 8};
+    simulation.enemies.push_back(enemy);
+
+    update_path(simulation);
+
+    memset(simulation.level, 0, sizeof(simulation.level));
+    simulation.level[0][0] = {TOWER, 0};
+
+    auto& level = simulation.level;
 
     uint32_t cursor = 0;
     int x = 0, y = 0;
@@ -201,7 +231,7 @@ int main()
     }
 
     InitWindow(1600, 900, "yeet");
-    SetTargetFPS(60);
+    // SetTargetFPS(20);
     Camera3D camera = {0};
     camera.position = (Vector3){0.0f, 10.0f, 10.0f}; // Camera position
     camera.target = (Vector3){0.0f, 0.0f, 0.0f};     // Camera looking at point
@@ -211,17 +241,6 @@ int main()
 
     Vector3 global_map_offet = {-4.5f, 0, -4.5f};
     auto tower_model = LoadModel("tower.glb");
-
-    simulation_t simulation;
-    enemy_t enemy;
-    enemy.path_index = 0;
-    enemy.speed = 3;
-    enemy.position = {8, 0, 8};
-    simulation.enemies.push_back(enemy);
-
-    update_path(simulation);
-
-    level[0][0] = {TOWER, 0};
 
     int camera_mode = CAMERA_CUSTOM;
 
@@ -246,6 +265,9 @@ int main()
         UpdateCamera(&camera, camera_mode);
         ClearBackground(BLACK);
         BeginDrawing();
+
+        DrawLine(0, 0, 500, 500, PINK);
+
         BeginMode3D(camera);
         DrawGrid(10, 1.0f);
 
@@ -284,6 +306,7 @@ int main()
             DrawSphere(add(global_map_offet, simulation.path[i]), 0.25f, GREEN);
 
         EndMode3D();
+
         EndDrawing();
     }
 }
